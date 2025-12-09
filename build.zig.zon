@@ -11,8 +11,8 @@
     },
     .dependencies = .{
         .stringzilla = .{
-            .url = "https://github.com/ashvardanian/StringZilla/archive/refs/tags/v4.4.0.tar.gz",
-            .hash = "N-V-__8AADIaPwCREh8Lgxh6DfepdG9amRiv1XI_FxVQOVlg",
+            .url = "https://github.com/ashvardanian/StringZilla/archive/refs/tags/v4.4.2.tar.gz",
+            .hash = "N-V-__8AAGUfPwAsYRR_xSKO4UTLq5xJtwfv8sYKG9BkDSm9",
         },
     },
 }
