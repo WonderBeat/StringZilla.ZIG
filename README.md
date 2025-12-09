@@ -1,6 +1,13 @@
 # StringZilla.ZIG
 
+[![CI](https://github.com/WonderBeat/StringZilla.ZIG/workflows/CI/badge.svg)](https://github.com/WonderBeat/StringZilla.ZIG/actions)
+[![Latest Release](https://img.shields.io/github/release/WonderBeat/StringZilla.ZIG.svg)](https://github.com/WonderBeat/StringZilla.ZIG/releases/latest)
+[![License](https://img.shields.io/github/license/WonderBeat/StringZilla.ZIG.svg)](https://github.com/WonderBeat/StringZilla.ZIG/blob/main/LICENSE)
+[![Zig Version](https://img.shields.io/badge/zig-0.15.2+-yellow.svg)](https://ziglang.org/download/)
+
 A high-performance Zig wrapper for [StringZilla](https://github.com/ashvardanian/StringZilla) - a SIMD-accelerated string processing library designed for massive datasets
+
+![StringZilla banner](https://github.com/ashvardanian/ashvardanian/blob/master/repositories/StringZilla-v4.jpg?raw=true)
 
 ## Overview
 
@@ -208,3 +215,4 @@ This project follows the same license as the original StringZilla library. Pleas
 ## Related Projects
 
 - [StringZilla](https://github.com/ashvardanian/StringZilla) - Original C library
+
