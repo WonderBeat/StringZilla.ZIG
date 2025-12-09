@@ -1,0 +1,18 @@
+.{
+    .name = .stringzillazig,
+    .fingerprint = 0x94631ec5515797a4,
+    .version = "1.0.0",
+    .minimum_zig_version = "0.15.2",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+    },
+    .dependencies = .{
+        .stringzilla = .{
+            .url = "https://github.com/ashvardanian/StringZilla/archive/refs/tags/v4.4.0.tar.gz",
+            .hash = "N-V-__8AADIaPwCREh8Lgxh6DfepdG9amRiv1XI_FxVQOVlg",
+        },
+    },
+}

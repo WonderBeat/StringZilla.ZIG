@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  ZIG_VERSION: 0.13.0
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-linux
+          - name: macOS x86_64
+            os: macos-latest
+            target: x86_64-macos
+          - name: macOS ARM64
+            os: macos-latest
+            target: aarch64-macos
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: ${{ env.ZIG_VERSION }}
+
+    - name: Cache Zig dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/zig
+          zig-cache
+        key: ${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('**/*.zig', 'build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-
+          ${{ runner.os }}-zig-
+
+    - name: Verify Zig installation
+      run: zig version
+
+    - name: Fetch dependencies
+      run: zig fetch --save build.zig.zon
+
+    - name: Build project
+      run: zig build
+
+    - name: Run tests
+      run: zig build test
+
+    - name: Run example
+      run: zig build run
+
+    - name: Check formatting
+      run: zig fmt --check src/
+
+    - name: Safety checks
+      run: |
+        zig build-exe src/main.zig --name main-check -fsanitize=undefined,fuzzer-address
+        rm -f main-check
+
+  build-windows:
+    name: Test Windows
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: ${{ env.ZIG_VERSION }}
+
+    - name: Cache Zig dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/zig
+          zig-cache
+        key: ${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('**/*.zig', 'build.zig.zon') }}
+        restore-keys: |
+          ${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-
+          ${{ runner.os }}-zig-
+
+    - name: Verify Zig installation
+      run: zig version
+
+    - name: Fetch dependencies
+      run: zig fetch --save build.zig.zon
+
+    - name: Build project
+      run: zig build
+
+    - name: Run tests
+      run: zig build test
+
+    - name: Run example
+      run: zig build run
+
+  security:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: ${{ env.ZIG_VERSION }}
+
+    - name: Run safety checks
+      run: |
+        # Build with all safety checks enabled
+        zig build-exe src/main.zig --name safety-check -fsanitize=thread,undefined
+        rm -f safety-check
+
+    - name: Check for unsafe patterns
+      run: |
+        # Basic security checks
+        grep -r "TODO\|FIXME\|XXX" src/ || echo "No TODO/FIXME markers found"
+        
+        # Check for potential unsafe operations
+        if grep -r "cVaList\|extern fn.*unsafe" src/; then
+          echo "⚠️  Found potentially unsafe operations - review needed"
+        else
+          echo "✅ No obvious unsafe patterns detected"
+        fi
