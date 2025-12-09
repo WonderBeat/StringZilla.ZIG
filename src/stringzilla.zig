@@ -239,7 +239,8 @@ pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) struct { bytes_consumed
     var runes_unpacked: usize = 0;
     const result = clib.sz_utf8_unpack_chunk(text.ptr, text.len, runes.ptr, runes.len, &runes_unpacked);
 
-    const bytes_consumed: usize = if (@intFromPtr(result) == 0) 0 else @intCast(@intFromPtr(result) - @intFromPtr(text.ptr));
+    // The result is a pointer to the byte after the last unpacked byte
+    const bytes_consumed = @intFromPtr(result) - @intFromPtr(text.ptr);
     return .{ .bytes_consumed = bytes_consumed, .runes_unpacked = runes_unpacked };
 }
 
