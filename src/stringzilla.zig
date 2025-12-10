@@ -101,10 +101,17 @@ fn intersection_fallback(data1: []const []const u8, data2: []const []const u8, p
 }
 
 /// A byte set for efficient character matching.
+/// Hardware-accelerated character set matching using bit manipulation.
+/// Each bit represents one possible byte value (0-255), organized into
+/// four 64-bit words for efficient SIMD operations.
 pub const Byteset = struct {
     bits: [4]u64 = [_]u64{0} ** 4,
 
     /// Initializes a bit-set to contain all ASCII characters.
+    /// Creates a byteset that includes all ASCII values (0-127).
+    /// Useful for operations like checking if any byte is ASCII.
+    ///
+    /// @return Byteset containing all ASCII characters
     pub fn new_ascii() Byteset {
         return Byteset{
             .bits = [_]u64{std.math.maxInt(u64)} ** 2 ++ [_]u64{0} ** 2,
@@ -112,6 +119,9 @@ pub const Byteset = struct {
     }
 
     /// Adds a byte to the set.
+    /// Sets the bit corresponding to the given byte value.
+    ///
+    /// @param c Byte value to add to the set (0-255)
     pub fn add_u8(self: *Byteset, c: u8) void {
         const idx = c >> 6; // Divide by 64
         const bit: u6 = @intCast(c & 63); // Remainder modulo 64
@@ -119,10 +129,18 @@ pub const Byteset = struct {
     }
 
     /// Adds a character to the set (assumes ASCII).
+    /// Convenience method for adding ASCII characters.
+    ///
+    /// @param c ASCII character to add to the set
     pub fn add(self: *Byteset, c: u8) void {
         self.add_u8(c);
     }
 
+    /// Creates an inverted version of this byteset.
+    /// Returns a new byteset where all bits are flipped.
+    /// Useful for finding characters that are NOT in a set.
+    ///
+    /// @return New Byteset with all bits inverted
     pub fn inverted(self: Byteset) Byteset {
         return Byteset{
             .bits = [_]u64{
@@ -134,6 +152,12 @@ pub const Byteset = struct {
         };
     }
 
+    /// Creates a byteset from a byte slice.
+    /// Convenience constructor that adds all bytes from the input slice.
+    /// Commonly used for creating character sets like vowels, consonants, etc.
+    ///
+    /// @param bytes Slice of bytes to add to the set
+    /// @return Byteset containing all bytes from the input slice
     pub fn from_bytes(bytes: []const u8) Byteset {
         var set = Byteset{};
         for (bytes) |b| {
@@ -222,28 +246,60 @@ pub inline fn version() types.SemVer {
 }
 
 /// Computes the checksum value of unsigned bytes in a given byte slice.
+/// Hardware-accelerated byte-level 64-bit unsigned checksum.
+///
+/// This is a simple checksum function that sums all bytes in the input.
+/// Useful for quick data integrity checks and hashing applications where
+/// performance is more important than cryptographic security.
+///
+/// @param text The input byte slice to compute the checksum for
+/// @return 64-bit unsigned checksum value
 pub inline fn bytesum(text: []const u8) u64 {
     return clib.sz_bytesum(text.ptr, text.len);
 }
 
 /// Moves the contents of `source` into `target`.
+/// Similar to `memmove`, copies (moves) contents of one string into another.
+/// Unlike `copy`, allows overlapping strings as arguments.
+///
+/// @param target Destination buffer to copy into. Can be `NULL` if length is zero.
+/// @param source Source buffer to copy from. Can be `NULL` if length is zero.
+/// @note The target and source may overlap, this function handles it correctly.
 pub inline fn moveMemory(target: []u8, source: []const u8) void {
     std.debug.assert(target.len >= source.len);
     clib.sz_move(target.ptr, source.ptr, source.len);
 }
 
 /// Fills the contents of `target` with the specified `value`.
+/// Similar to `memset`, initializes memory with a constant value.
+/// Often used to initialize memory with a constant value, like zero.
+///
+/// @param target Target buffer to fill. Can be `NULL` if length is zero.
+/// @param value The byte value to fill the buffer with.
 pub inline fn fill(target: []u8, value: u8) void {
     clib.sz_fill(target.ptr, target.len, value);
 }
 
 /// Copies the contents of `source` into `target`.
+/// Similar to `memcpy`, copies contents of one string into another.
+/// This is probably the most common operation in a computer.
+///
+/// @param target Destination buffer to copy into. Can be `NULL` if length is zero.
+/// @param source Source buffer to copy from. Can be `NULL` if length is zero.
+/// @pre The target and source must not overlap. Use `moveMemory` for overlapping regions.
 pub inline fn copy(target: []u8, source: []const u8) void {
     std.debug.assert(target.len >= source.len);
     clib.sz_copy(target.ptr, source.ptr, source.len);
 }
 
 /// Performs a lookup transformation (LUT).
+/// Look-Up Table (LUT) transformation of a string, mapping each byte to a new value.
+/// Generalizes ASCII conversions like lowercase to uppercase.
+///
+/// @param target Destination buffer for transformed bytes.
+/// @param source Source buffer to transform.
+/// @param table 256-byte lookup table mapping input bytes to output bytes.
+/// @pre The target and source must not overlap.
 pub inline fn lookup(target: []u8, source: []const u8, table: [256]u8) void {
     std.debug.assert(target.len >= source.len);
     _ = clib.sz_lookup(target.ptr, source.len, source.ptr, &table);
@@ -260,6 +316,13 @@ pub inline fn utf8_case_fold(source: []const u8, destination: []u8) usize {
 }
 
 /// Performs case-insensitive search for `needle` in UTF-8 `haystack`.
+/// Hardware-accelerated case-insensitive Unicode string search.
+/// Applies Unicode case folding to both haystack and needle for matching.
+/// Works with full Unicode text, including accented characters and non-Latin scripts.
+///
+/// @param haystack The UTF-8 encoded string to search in
+/// @param needle The UTF-8 encoded pattern to find
+/// @return Range representing the match location and length, or null if not found
 pub fn utf8_case_insensitive_find(haystack: []const u8, needle: []const u8) ?Range {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_case_insensitive_find(haystack.ptr, haystack.len, needle.ptr, needle.len, &matched_length);
@@ -286,6 +349,14 @@ pub fn utf8_case_insensitive_order(a: []const u8, b: []const u8) std.math.Order 
 }
 
 /// Unpacks a UTF-8 byte sequence into UTF-32 codepoints.
+/// Hardware-accelerated UTF-8 to UTF-32 conversion using SIMD instructions.
+/// Processes UTF-8 text directly without decoding intermediate steps,
+/// checking for matches at different granularities (1, 2, 3, and 4 byte sequences).
+/// Useful when you need random access to individual Unicode characters.
+///
+/// @param text The UTF-8 encoded input string to unpack
+/// @param runes Output buffer for UTF-32 codepoints
+/// @return Utf8UnpackResult containing bytes consumed and runes unpacked
 pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) Utf8UnpackResult {
     var runes_unpacked: usize = 0;
     const result = clib.sz_utf8_unpack_chunk(text.ptr, text.len, runes.ptr, runes.len, &runes_unpacked);
@@ -296,16 +367,35 @@ pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) Utf8UnpackResult {
 }
 
 /// Computes a 64-bit AES-based hash value with seed.
+/// Hardware-accelerated non-cryptographic 64-bit hash using AES instructions.
+/// Combines AES operations with shuffle & add instructions for high entropy.
+/// Fast for both short strings (velocity) and long strings (throughput).
+///
+/// @param text The input byte slice to hash
+/// @param seed Custom seed value that affects every bit of the output
+/// @return 64-bit hash value
 pub inline fn hash_with_seed(text: []const u8, seed: u64) u64 {
     return clib.sz_hash(text.ptr, text.len, seed);
 }
 
 /// Computes a 64-bit AES-based hash value.
+/// Hardware-accelerated non-cryptographic 64-bit hash using AES instructions.
+/// Uses zero as the default seed value.
+///
+/// @param text The input byte slice to hash
+/// @return 64-bit hash value
 pub inline fn hash(text: []const u8) u64 {
     return hash_with_seed(text, 0);
 }
 
 /// Locates the first matching substring within `haystack`.
+/// Equivalent to `memmem(haystack, h_length, needle, n_length)` in LibC.
+/// Similar to `strstr(haystack, needle)` in LibC, but requires known length.
+/// Hardware-accelerated substring search using SIMD instructions.
+///
+/// @param haystack The string to search in
+/// @param needle The substring to find
+/// @return Index of first match, or null if not found
 pub fn find(haystack: []const u8, needle: []const u8) ?usize {
     const result = clib.sz_find(haystack.ptr, haystack.len, needle.ptr, needle.len);
 
@@ -317,6 +407,11 @@ pub fn find(haystack: []const u8, needle: []const u8) ?usize {
 }
 
 /// Locates the last matching substring within `haystack`.
+/// Hardware-accelerated reverse substring search using SIMD instructions.
+///
+/// @param haystack The string to search in
+/// @param needle The substring to find
+/// @return Index of last match, or null if not found
 pub fn rfind(haystack: []const u8, needle: []const u8) ?usize {
     const result = clib.sz_rfind(haystack.ptr, haystack.len, needle.ptr, needle.len);
 
@@ -370,6 +465,14 @@ pub fn rfind_byte_not_from(haystack: []const u8, needles: []const u8) ?usize {
 }
 
 /// Finds the first newline character in UTF-8 encoded text.
+/// Skips to the first occurrence of a UTF-8 newline character in a string.
+/// Detects all 7 Unicode newline characters plus CRLF combinations:
+/// LF (U+000A), CR (U+000D), CRLF, VT (U+000B), FF (U+000C),
+/// NEL (U+0085), LS (U+2028), PS (U+2029).
+/// Hardware-accelerated SIMD implementation for fast detection.
+///
+/// @param text The UTF-8 encoded string to search in
+/// @return Slice containing the found newline sequence, or null if not found
 pub fn find_newline_utf8(text: []const u8) ?[]const u8 {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_find_newline(text.ptr, text.len, &matched_length);
@@ -383,6 +486,14 @@ pub fn find_newline_utf8(text: []const u8) ?[]const u8 {
 }
 
 /// Finds the first whitespace character in UTF-8 encoded text.
+/// Skips to the first occurrence of a UTF-8 whitespace character.
+/// Detects all Unicode "White_Space" characters (25 characters) as defined
+/// by Unicode, matching ICU's `u_isspace()` and Python's `str.isspace()`.
+/// Does NOT include U+001C-U+001F (FILE/GROUP/RECORD/UNIT SEPARATOR).
+/// Hardware-accelerated SIMD implementation for fast detection.
+///
+/// @param text The UTF-8 encoded string to search in
+/// @return Slice containing the found whitespace sequence, or null if not found
 pub fn find_whitespace_utf8(text: []const u8) ?[]const u8 {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_find_whitespace(text.ptr, text.len, &matched_length);
@@ -396,11 +507,25 @@ pub fn find_whitespace_utf8(text: []const u8) ?[]const u8 {
 }
 
 /// Counts the number of UTF-8 characters in the text.
+/// The logic counts "continuation bytes" matching the 10xxxxxx pattern,
+/// then subtracts that from the total byte length to get the number of
+/// "start bytes" - coinciding with the number of UTF-8 characters.
+/// Hardware-accelerated SIMD implementation for fast UTF-8 processing.
+///
+/// @param text The UTF-8 encoded string to count characters in
+/// @return Number of UTF-8 characters in the string
 pub inline fn count_utf8(text: []const u8) usize {
     return clib.sz_utf8_count(text.ptr, text.len);
 }
 
 /// Finds the byte offset of the Nth UTF-8 character (0-indexed).
+/// Skip forward to the Nth UTF-8 character in the string.
+/// Useful for pagination (e.g., skip to character 1000) or
+/// truncating to a specific character count (e.g., Twitter-style 280 chars).
+///
+/// @param text The UTF-8 encoded string to search in
+/// @param n Number of UTF-8 characters to skip (0-indexed)
+/// @return Byte offset of the Nth character, or null if string has fewer than n characters
 pub fn find_nth_utf8(text: []const u8, n: usize) ?usize {
     const result = clib.sz_utf8_find_nth(text.ptr, text.len, n);
 
@@ -412,6 +537,12 @@ pub fn find_nth_utf8(text: []const u8, n: usize) ?usize {
 }
 
 /// Randomizes the contents of a given byte slice.
+/// Uses AES instructions as a Pseudo-Random Number Generator (PRNG)
+/// that is consistent between different implementation backends
+/// and has reproducible output with the same "nonce".
+///
+/// @param buffer Buffer to fill with random data
+/// @param nonce Seed value for deterministic random generation
 pub inline fn fill_random(buffer: []u8, nonce: u64) void {
     clib.sz_fill_random(buffer.ptr, buffer.len, nonce);
 }
