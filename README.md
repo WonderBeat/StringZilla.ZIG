@@ -19,7 +19,7 @@ StringZilla.ZIG provides idiomatic Zig bindings to the StringZilla C library
 - **Hashing**: `bytesum()`, `hash()`, `hmac_sha256()`
 - **UTF-8 Support**: Character counting and Unicode-aware operations
 - **Memory Operations**: `copy()`, `move()`, `fill()`, `lookup()`
-- **Bit Manipulation**: `Bitset` for efficient pattern matching
+- **Character Set Operations**: `Byteset` for efficient pattern matching
 
 ## Installation
 
@@ -97,8 +97,8 @@ std.debug.print("Bytesum: {}\n", .{checksum});
 const hash_val = stringzilla.hash("Hello, World!");
 std.debug.print("Hash: {}\n", .{hash_val});
 
-// HMAC-SHA256 (requires key)
-const hmac = stringzilla.hmac_sha256("message", "secret-key");
+// HMAC-SHA256 
+const hmac = stringzilla.hmac_sha256("secret-key", "message");
 ```
 
 ### Character Set Operations
@@ -132,20 +132,62 @@ stringzilla.copy(buffer[0..source.len], source);
 // Fill with pattern
 stringzilla.fill(buffer[0..50], 0xAA);
 
-// Move memory (handles overlap)
-stringzilla.move_(buffer[10..], buffer[0..50]);
+// Move memory with overlap handling (new improved API)
+stringzilla.moveMemory(buffer[10..60], buffer[0..50]);
+
 ```
 
-### Bit Manipulation
+### UTF-8 Unpacking
 
 ```zig
-// Create a bitset for pattern matching
-var pattern = stringzilla.Bitset.init();
-pattern.set_range(65, 26); // A-Z letters
+const utf8_text = "Hello 🌍 世界";
+var runes: [16]u32 = undefined;
 
-// Check if character is in set
-if (pattern.contains('A')) {
-    std.debug.print("A is in the pattern\n", .{});
+// Unpack UTF-8 to UTF-32 runes with enhanced API
+const result = stringzilla.utf8_unpack_chunk(utf8_text, &runes);
+
+std.debug.print("Consumed {} bytes, unpacked {} runes\n", .{ 
+    result.bytes_consumed, result.runes_unpacked 
+});
+
+// Access individual runes
+for (0..result.runes_unpacked) |i| {
+    std.debug.print("Rune {}: {X}\n", .{ i, runes[i] });
+}
+```
+
+### Character Set Manipulation
+
+```zig
+const text = "The quick brown fox jumps over the lazy dog";
+
+// Create a byteset for pattern matching
+var pattern = stringzilla.Byteset{};
+pattern.add('A');
+pattern.add('B');
+pattern.add('C');
+
+// Create from bytes 
+const vowels = stringzilla.Byteset.from_bytes("aeiou");
+const consonants = stringzilla.Byteset.from_bytes("bcdfghjklmnpqrstvwxyz");
+
+// Find characters in sets
+if (stringzilla.find_byteset(text, vowels)) |pos| {
+    std.debug.print("First vowel at position {}\n", .{pos});
+}
+
+if (stringzilla.find_byteset(text, consonants)) |pos| {
+    std.debug.print("First consonant at position {}\n", .{pos});
+}
+
+// Alternative: find from byte slice
+if (stringzilla.find_byte_from(text, "xyz")) |pos| {
+    std.debug.print("Found 'x', 'y', or 'z' at position {}\n", .{pos});
+}
+
+// Find characters NOT in set
+if (stringzilla.find_byte_not_from(text, "aeiou ")) |pos| {
+    std.debug.print("First non-vowel/non-space at position {}\n", .{pos});
 }
 ```
 
@@ -159,18 +201,49 @@ const utf8_text = "Hello, 世界! 🌍";
 const char_count = stringzilla.count_utf8(utf8_text);
 std.debug.print("Unicode characters: {}\n", .{char_count});
 
-// Find newline characters (UTF-8 aware)
-if (stringzilla.find_newline_utf8(utf8_text)) |pos| {
-    std.debug.print("Newline at position {}\n", .{pos});
+// Case-insensitive search with Unicode (returns Range)
+if (stringzilla.utf8_case_insensitive_find(utf8_text, "WORLD")) |range| {
+    const found_text = range.slice(utf8_text);
+    std.debug.print("Case-insensitive match: '{s}'\n", .{found_text});
 }
 
-// Find whitespace (UTF-8 aware)
-if (stringzilla.find_whitespace_utf8(utf8_text)) |pos| {
-    std.debug.print("Whitespace at position {}\n", .{pos});
+// Case-insensitive Unicode search (Russian text example)
+const russian_text = "Привет МИР, привет мир!";
+if (stringzilla.utf8_case_insensitive_find(russian_text, "мир")) |range| {
+    const found_word = range.slice(russian_text);
+    std.debug.print("Found Russian word: '{s}'\n", .{found_word});
+}
+
+// Find newline characters
+if (stringzilla.find_newline_utf8(utf8_text)) |newline_slice| {
+    std.debug.print("Newline found: '{any}'\n", .{newline_slice});
+}
+
+// Find whitespace (UTF-8 aware) 
+if (stringzilla.find_whitespace_utf8(utf8_text)) |whitespace_slice| {
+    std.debug.print("Whitespace found: '{any}'\n", .{whitespace_slice});
 }
 ```
 
-## Building
+## Recent API Improvements
+
+### 🔥 **Enhanced Ergonomics**
+
+**Range Struct**: Replace anonymous tuples with a proper `Range` struct:
+```zig
+// Before: Anonymous struct
+const result = utf8_case_insensitive_find(text, "world");
+const slice = text[result.?.offset .. result.?.offset + result.?.length];
+
+// After: Clean Range API  
+const result = utf8_case_insensitive_find(text, "world");
+const slice = result.?.slice(text);
+```
+
+**Utf8UnpackResult**: Structured UTF-8 unpacking results:
+```zig
+const result = utf8_unpack_chunk(text, &runes);
+```
 
 ### Build the Example
 
@@ -211,4 +284,3 @@ This project follows the same license as the original StringZilla library. Pleas
 ## Related Projects
 
 - [StringZilla](https://github.com/ashvardanian/StringZilla) - Original C library
-

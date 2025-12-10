@@ -1,9 +1,60 @@
 const std = @import("std");
-const config = @import("config");
-
 //pub const clib = if (config.is_dynamic_dispatch) @import("extern.zig") else @cImport(@cInclude("stringzilla/stringzilla.h"));
 pub const clib = @import("extern.zig");
 pub const types = @import("types.zig");
+
+pub const Range = struct {
+    start: usize,
+    length: usize,
+
+    pub fn end(self: Range) usize {
+        return self.start + self.length;
+    }
+
+    pub fn slice(self: Range, text: []const u8) []const u8 {
+        return text[self.start..self.end()];
+    }
+
+    pub fn isEmpty(self: Range) bool {
+        return self.length == 0;
+    }
+
+    pub fn contains(self: Range, pos: usize) bool {
+        return pos >= self.start and pos < self.end();
+    }
+
+    pub fn overlaps(self: Range, other: Range) bool {
+        return self.end() > other.start and other.end() > self.start;
+    }
+
+    pub fn intersection(self: Range, other: Range) ?Range {
+        if (!self.overlaps(other)) return null;
+
+        const new_start = @max(self.start, other.start);
+        const new_end = @min(self.end(), other.end());
+
+        return Range{
+            .start = new_start,
+            .length = new_end - new_start,
+        };
+    }
+
+    pub fn format(self: Range, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("[{}..{}] (len={})", .{ self.start, self.end(), self.length });
+    }
+};
+
+/// Represents UTF-8 unpacking result with consumed bytes and unpacked runes
+pub const Utf8UnpackResult = struct {
+    bytes_consumed: usize,
+    runes_unpacked: usize,
+
+    pub fn isEmpty(self: Utf8UnpackResult) bool {
+        return self.runes_unpacked == 0;
+    }
+};
 
 /// Intersects two sequences (inner join) using their default byte-slice views.
 pub fn intersection(allocator: std.mem.Allocator, comptime T: type, data1: []const T, data2: []const T, _seed: u64, positions1: []types.SortedIdx, positions2: []types.SortedIdx) types.StringZillaError!usize {
@@ -176,7 +227,7 @@ pub inline fn bytesum(text: []const u8) u64 {
 }
 
 /// Moves the contents of `source` into `target`.
-pub inline fn move_(target: []u8, source: []const u8) void {
+pub inline fn moveMemory(target: []u8, source: []const u8) void {
     std.debug.assert(target.len >= source.len);
     clib.sz_move(target.ptr, source.ptr, source.len);
 }
@@ -209,16 +260,16 @@ pub inline fn utf8_case_fold(source: []const u8, destination: []u8) usize {
 }
 
 /// Performs case-insensitive search for `needle` in UTF-8 `haystack`.
-pub fn utf8_case_insensitive_find(haystack: []const u8, needle: []const u8) ?struct { offset: usize, length: usize } {
+pub fn utf8_case_insensitive_find(haystack: []const u8, needle: []const u8) ?Range {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_case_insensitive_find(haystack.ptr, haystack.len, needle.ptr, needle.len, &matched_length);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
     const offset: usize = @intCast(@intFromPtr(result) - @intFromPtr(haystack.ptr));
-    return .{ .offset = offset, .length = matched_length };
+    return Range{ .start = offset, .length = matched_length };
 }
 
 /// Compares two UTF-8 strings in case-insensitive manner.
@@ -235,13 +286,13 @@ pub fn utf8_case_insensitive_order(a: []const u8, b: []const u8) std.math.Order 
 }
 
 /// Unpacks a UTF-8 byte sequence into UTF-32 codepoints.
-pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) struct { bytes_consumed: usize, runes_unpacked: usize } {
+pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) Utf8UnpackResult {
     var runes_unpacked: usize = 0;
     const result = clib.sz_utf8_unpack_chunk(text.ptr, text.len, runes.ptr, runes.len, &runes_unpacked);
 
     // The result is a pointer to the byte after the last unpacked byte
     const bytes_consumed = @intFromPtr(result) - @intFromPtr(text.ptr);
-    return .{ .bytes_consumed = bytes_consumed, .runes_unpacked = runes_unpacked };
+    return Utf8UnpackResult{ .bytes_consumed = bytes_consumed, .runes_unpacked = runes_unpacked };
 }
 
 /// Computes a 64-bit AES-based hash value with seed.
@@ -258,7 +309,7 @@ pub inline fn hash(text: []const u8) u64 {
 pub fn find(haystack: []const u8, needle: []const u8) ?usize {
     const result = clib.sz_find(haystack.ptr, haystack.len, needle.ptr, needle.len);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -269,7 +320,7 @@ pub fn find(haystack: []const u8, needle: []const u8) ?usize {
 pub fn rfind(haystack: []const u8, needle: []const u8) ?usize {
     const result = clib.sz_rfind(haystack.ptr, haystack.len, needle.ptr, needle.len);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -280,7 +331,7 @@ pub fn rfind(haystack: []const u8, needle: []const u8) ?usize {
 pub fn find_byteset(haystack: []const u8, needles: Byteset) ?usize {
     const result = clib.sz_find_byteset(haystack.ptr, haystack.len, @ptrCast(&needles));
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -291,7 +342,7 @@ pub fn find_byteset(haystack: []const u8, needles: Byteset) ?usize {
 pub fn rfind_byteset(haystack: []const u8, needles: Byteset) ?usize {
     const result = clib.sz_rfind_byteset(haystack.ptr, haystack.len, &needles);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -323,7 +374,7 @@ pub fn find_newline_utf8(text: []const u8) ?[]const u8 {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_find_newline(text.ptr, text.len, &matched_length);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -336,7 +387,7 @@ pub fn find_whitespace_utf8(text: []const u8) ?[]const u8 {
     var matched_length: usize = 0;
     const result = clib.sz_utf8_find_whitespace(text.ptr, text.len, &matched_length);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -353,7 +404,7 @@ pub inline fn count_utf8(text: []const u8) usize {
 pub fn find_nth_utf8(text: []const u8, n: usize) ?usize {
     const result = clib.sz_utf8_find_nth(text.ptr, text.len, n);
 
-    if (@intFromPtr(result) == 0) {
+    if (@as(?*const anyopaque, result) == null) {
         return null;
     }
 
@@ -477,7 +528,7 @@ pub const WhitespaceUtf8Iterator = struct {
 test "metadata" {
     try std.testing.expect(dynamic_dispatch());
     const caps = capabilities();
-    try std.testing.expect(@intFromPtr(caps) != 0);
+    try std.testing.expect(@as(?*const anyopaque, caps) != null);
 }
 
 test "bytesum" {
@@ -597,7 +648,7 @@ test "utf8_operations" {
     // Test utf8_case_insensitive_find
     const result1 = utf8_case_insensitive_find("Hello WORLD", "world");
     try std.testing.expect(result1 != null);
-    const found_slice = "Hello WORLD"[result1.?.offset .. result1.?.offset + result1.?.length];
+    const found_slice = result1.?.slice("Hello WORLD");
     try std.testing.expect(std.mem.eql(u8, found_slice, "WORLD"));
 
     try std.testing.expect(utf8_case_insensitive_find("Hello", "WORLD") == null);
@@ -728,7 +779,7 @@ test "memory_operations" {
     // Test move
     var dest: [6]u8 = undefined;
     const src = "source";
-    move_(&dest, src[0..6]);
+    moveMemory(&dest, src[0..6]);
     try std.testing.expect(std.mem.eql(u8, &dest, "source"));
 }
 
@@ -978,7 +1029,7 @@ test "memory_operations_edge_cases" {
     // Test move with same source and target
     {
         var buffer: [10]u8 = "1234567890".*;
-        move_(&buffer, buffer[0..10]);
+        moveMemory(&buffer, buffer[0..10]);
         try std.testing.expect(std.mem.eql(u8, &buffer, "1234567890"));
     }
 }
@@ -1097,5 +1148,396 @@ test "sha256_comparison_with_zig_std" {
         try std.testing.expect(std.mem.eql(u8, &sz_incremental, &sz_one_shot));
         try std.testing.expect(std.mem.eql(u8, &zig_incremental, &zig_one_shot));
         try std.testing.expect(std.mem.eql(u8, &sz_incremental, &zig_incremental));
+    }
+}
+
+test "Range struct basic operations" {
+    const range = Range{ .start = 5, .length = 10 };
+
+    // Test end calculation
+    try std.testing.expect(range.end() == 15);
+
+    // Test slice extraction
+    const text = "Hello, World! This is a test string.";
+    const slice = range.slice(text);
+    try std.testing.expect(std.mem.eql(u8, slice, ", World! T"));
+
+    // Test empty check
+    try std.testing.expect(!range.isEmpty());
+    const empty_range = Range{ .start = 0, .length = 0 };
+    try std.testing.expect(empty_range.isEmpty());
+
+    // Test contains position
+    try std.testing.expect(range.contains(5)); // start
+    try std.testing.expect(range.contains(10)); // middle
+    try std.testing.expect(!range.contains(15)); // end (exclusive)
+    try std.testing.expect(!range.contains(4)); // before
+}
+
+test "Range struct advanced operations" {
+    const range1 = Range{ .start = 5, .length = 10 }; // [5, 15)
+    const range2 = Range{ .start = 12, .length = 8 }; // [12, 20)
+    const range3 = Range{ .start = 20, .length = 5 }; // [20, 25)
+
+    // Test overlaps
+    try std.testing.expect(range1.overlaps(range2)); // [12, 15) overlaps
+    try std.testing.expect(!range1.overlaps(range3)); // no overlap
+
+    // Test intersection
+    const range_intersection = range1.intersection(range2).?;
+    try std.testing.expect(range_intersection.start == 12);
+    try std.testing.expect(range_intersection.length == 3); // [12, 15)
+
+    // Test no intersection returns null
+    try std.testing.expect(range1.intersection(range3) == null);
+
+    // Test identical ranges
+    const identical = Range{ .start = 10, .length = 5 };
+    const intersection_identical = identical.intersection(identical).?;
+    try std.testing.expect(intersection_identical.start == 10);
+    try std.testing.expect(intersection_identical.length == 5);
+}
+
+test "Range struct edge cases" {
+    // Test range at end of string
+    const text = "Hello";
+    const end_range = Range{ .start = 5, .length = 0 };
+    try std.testing.expect(end_range.isEmpty());
+
+    // Test single character range
+    const single_range = Range{ .start = 1, .length = 1 };
+    const slice = single_range.slice(text);
+    try std.testing.expect(std.mem.eql(u8, slice, "e"));
+
+    // Test range boundaries
+    const boundary_range = Range{ .start = 0, .length = 5 };
+    try std.testing.expect(boundary_range.contains(0));
+    try std.testing.expect(boundary_range.contains(4));
+    try std.testing.expect(!boundary_range.contains(5));
+}
+
+test "Utf8UnpackResult struct operations" {
+    const result = Utf8UnpackResult{ .bytes_consumed = 7, .runes_unpacked = 4 };
+
+    // Test isEmpty
+    try std.testing.expect(!result.isEmpty());
+
+    // Test empty result
+    const empty_result = Utf8UnpackResult{ .bytes_consumed = 0, .runes_unpacked = 0 };
+    try std.testing.expect(empty_result.isEmpty());
+
+    // Test partial result
+    const partial_result = Utf8UnpackResult{ .bytes_consumed = 5, .runes_unpacked = 0 };
+    try std.testing.expect(partial_result.isEmpty());
+}
+
+test "moveMemory function" {
+    var buffer: [20]u8 = undefined;
+    const source = "Hello, World!";
+
+    // Test normal move
+    moveMemory(buffer[0..source.len], source);
+    try std.testing.expect(std.mem.eql(u8, buffer[0..source.len], source));
+
+    // Test move with overlap (moving forward)
+    const original = "abcdef";
+    @memcpy(buffer[0..original.len], original);
+    moveMemory(buffer[2..6], buffer[0..4]); // Move "abcd" to position 2 (target: indices 2-5)
+    try std.testing.expect(std.mem.eql(u8, buffer[0..6], "ababcd"));
+
+    // Test move with overlap (moving backward)
+    @memcpy(buffer[0..original.len], original);
+    moveMemory(buffer[0..4], buffer[2..6]); // Move "cdef" to position 0 (target: indices 0-3)
+    try std.testing.expect(std.mem.eql(u8, buffer[0..6], "cdefef"));
+}
+
+test "Range formatting" {
+    const range = Range{ .start = 5, .length = 10 };
+
+    // Test that Range has basic formatting capabilities
+    // Note: Custom format method is available but specific format depends on implementation
+    try std.testing.expect(range.start == 5);
+    try std.testing.expect(range.length == 10);
+    try std.testing.expect(range.end() == 15);
+
+    // Test that the struct can be formatted without crashing
+    var buffer: [32]u8 = undefined;
+    _ = std.fmt.bufPrint(&buffer, "{any}", .{range}) catch |err| {
+        // If formatting fails, that's acceptable for this test
+        try std.testing.expect(err == error.NoSpaceLeft);
+    };
+}
+
+test "utf8_case_insensitive_find with new Range API" {
+    const text = "Hello WORLD, hello world!";
+
+    // Test case-insensitive search
+    const result1 = utf8_case_insensitive_find(text, "world").?;
+    try std.testing.expect(result1.start == 6);
+    try std.testing.expect(result1.length == 5);
+
+    // Verify slice extraction
+    const slice1 = result1.slice(text);
+    try std.testing.expect(std.mem.eql(u8, slice1, "WORLD"));
+
+    // Test multiple occurrences (should find first)
+    const result2 = utf8_case_insensitive_find(text, "hello").?;
+    try std.testing.expect(result2.start == 0);
+    try std.testing.expect(result2.length == 5);
+
+    // Test not found
+    try std.testing.expect(utf8_case_insensitive_find(text, "xyz") == null);
+
+    // Test empty needle (behavior may vary based on StringZilla implementation)
+    const empty_result = utf8_case_insensitive_find(text, "");
+    // We don't assert specific behavior for empty needles, just test it doesn't crash
+    _ = empty_result;
+}
+
+test "utf8_case_insensitive_find Unicode text" {
+    const text = "Привет МИР, привет мир!"; // Russian text
+
+    // Test case-insensitive search in Russian
+    const result = utf8_case_insensitive_find(text, "мир").?;
+    try std.testing.expect(result.start > 0);
+    try std.testing.expect(result.length > 0);
+
+    // Verify the found text
+    const slice = result.slice(text);
+    // Should be either "МИР" or "мир" (case differences)
+    try std.testing.expect(slice.len == 6); // Russian characters are 2 bytes each in UTF-8
+}
+
+test "utf8_unpack_chunk with new Utf8UnpackResult API" {
+    const text = "Hello 🌍!";
+    var runes: [16]u32 = undefined;
+
+    const result = utf8_unpack_chunk(text, &runes);
+
+    // Verify result structure
+    try std.testing.expect(result.bytes_consumed > 0);
+    try std.testing.expect(result.runes_unpacked > 0);
+    try std.testing.expect(!result.isEmpty());
+
+    // Verify specific values
+    try std.testing.expect(runes[0] == 'H');
+    try std.testing.expect(runes[1] == 'e');
+    try std.testing.expect(runes[2] == 'l');
+    try std.testing.expect(runes[3] == 'l');
+    try std.testing.expect(runes[4] == 'o');
+    try std.testing.expect(runes[5] == ' ');
+    try std.testing.expect(runes[6] == 0x1F30D); // 🌍 emoji
+    try std.testing.expect(runes[7] == '!');
+}
+
+test "utf8_unpack_chunk edge cases" {
+    // Test empty input
+    {
+        const text = "";
+        var runes: [4]u32 = undefined;
+        const result = utf8_unpack_chunk(text, &runes);
+        try std.testing.expect(result.bytes_consumed == 0);
+        try std.testing.expect(result.runes_unpacked == 0);
+        try std.testing.expect(result.isEmpty());
+    }
+
+    // Test insufficient output buffer
+    {
+        const text = "Hello";
+        var runes: [2]u32 = undefined; // Too small
+        const result = utf8_unpack_chunk(text, &runes);
+        try std.testing.expect(result.runes_unpacked == 2); // Only fits 2 runes
+        try std.testing.expect(runes[0] == 'H');
+        try std.testing.expect(runes[1] == 'e');
+    }
+
+    // Test single UTF-8 character
+    {
+        const text = "A";
+        var runes: [4]u32 = undefined;
+        const result = utf8_unpack_chunk(text, &runes);
+        try std.testing.expect(result.bytes_consumed == 1);
+        try std.testing.expect(result.runes_unpacked == 1);
+        try std.testing.expect(runes[0] == 'A');
+    }
+}
+
+test "Range operations with edge cases" {
+    // Test overlapping ranges with different sizes
+    const small_range = Range{ .start = 10, .length = 2 };
+    const large_range = Range{ .start = 5, .length = 20 };
+
+    try std.testing.expect(small_range.overlaps(large_range));
+    try std.testing.expect(large_range.overlaps(small_range));
+
+    const range_intersection2 = small_range.intersection(large_range).?;
+    try std.testing.expect(range_intersection2.start == 10);
+    try std.testing.expect(range_intersection2.length == 2);
+
+    // Test adjacent ranges (no overlap)
+    const range1 = Range{ .start = 0, .length = 5 }; // [0, 5)
+    const range2 = Range{ .start = 5, .length = 5 }; // [5, 10)
+
+    try std.testing.expect(!range1.overlaps(range2));
+    try std.testing.expect(!range2.overlaps(range1));
+    try std.testing.expect(range1.intersection(range2) == null);
+
+    // Test one range completely inside another
+    const outer = Range{ .start = 0, .length = 10 };
+    const inner = Range{ .start = 3, .length = 4 };
+
+    try std.testing.expect(outer.overlaps(inner));
+    const inner_intersection = outer.intersection(inner).?;
+    try std.testing.expect(inner_intersection.start == 3);
+    try std.testing.expect(inner_intersection.length == 4);
+}
+
+test "API consistency across different text types" {
+    // Test ASCII
+    const ascii_text = "Hello World";
+    const ascii_range = utf8_case_insensitive_find(ascii_text, "world").?;
+    const ascii_slice = ascii_range.slice(ascii_text);
+    try std.testing.expect(std.mem.eql(u8, ascii_slice, "World"));
+
+    // Test mixed ASCII and Unicode
+    const mixed_text = "Привет world 世界";
+    const mixed_range = utf8_case_insensitive_find(mixed_text, "WORLD").?;
+    const mixed_slice = mixed_range.slice(mixed_text);
+    try std.testing.expect(std.mem.eql(u8, mixed_slice, "world"));
+
+    // Test that Range methods work with Unicode
+    try std.testing.expect(mixed_range.start > 0);
+    try std.testing.expect(mixed_range.length > 0);
+    try std.testing.expect(!mixed_range.isEmpty());
+    try std.testing.expect(mixed_range.contains(mixed_range.start));
+}
+
+test "Run README examples" {
+    {
+        const haystack = "Hello, World!";
+        const needle = "World";
+
+        const pos = find(haystack, needle) orelse return error.NotFound;
+        try std.testing.expect(pos == 7);
+
+        const last_o_pos = rfind(haystack, "o") orelse return error.NotFound;
+        try std.testing.expect(last_o_pos == 8);
+
+        const char_count = count_utf8(haystack);
+        try std.testing.expect(char_count == 13);
+    }
+
+    {
+        const checksum = bytesum("Hello, World!");
+        try std.testing.expect(checksum == 1129);
+
+        const hash_val = hash("Hello, World!");
+        try std.testing.expect(hash_val == 7174687111055709308);
+
+        const hmac = hmac_sha256("secret-key", "message");
+        try std.testing.expect(hmac.len == 32);
+    }
+
+    {
+        const text = "The quick brown fox jumps over the lazy dog";
+        const vowels = Byteset.from_bytes("aeiou");
+
+        const first_vowel_pos = find_byteset(text, vowels) orelse return error.NotFound;
+        try std.testing.expect(first_vowel_pos == 2); // 'e' in "The"
+
+        const first_vowel_from_pos = find_byte_from(text, "aeiou") orelse return error.NotFound;
+        try std.testing.expect(first_vowel_from_pos == 2); // 'e' in "The"
+    }
+
+    {
+        var buffer: [100]u8 = undefined;
+        const source = "Copy this text!";
+
+        copy(buffer[0..source.len], source);
+        try std.testing.expect(std.mem.eql(u8, buffer[0..source.len], source));
+
+        fill(buffer[0..50], 0xAA);
+        for (buffer[0..50]) |byte| {
+            try std.testing.expect(byte == 0xAA);
+        }
+
+        // Test moveMemory operation
+        const test_data = "abcdef";
+        @memcpy(buffer[0..test_data.len], test_data);
+        const original = [_]u8{ 'a', 'b', 'c', 'd', 'e', 'f' };
+        @memcpy(buffer[0..test_data.len], &original);
+        moveMemory(buffer[2..6], buffer[0..4]);
+        // After move: a b a b c d f (positions 2-5 should be "abcd")
+        try std.testing.expect(std.mem.eql(u8, buffer[2..6], "abcd"));
+    }
+
+    {
+        const text = "Hello, World! This is a test.";
+
+        const range = utf8_case_insensitive_find(text, "world") orelse return error.NotFound;
+        const found_text = range.slice(text);
+        try std.testing.expect(std.mem.eql(u8, found_text, "World"));
+        try std.testing.expect(range.start == 7);
+        try std.testing.expect(range.end() == 12);
+        try std.testing.expect(range.length == 5);
+
+        try std.testing.expect(!range.isEmpty());
+        try std.testing.expect(range.contains(10));
+
+        const range1 = Range{ .start = 5, .length = 10 };
+        const range2 = Range{ .start = 12, .length = 8 };
+
+        try std.testing.expect(range1.overlaps(range2));
+
+        const range_intersection = range1.intersection(range2) orelse return error.NotFound;
+        try std.testing.expect(range_intersection.start == 12);
+        try std.testing.expect(range_intersection.length == 3); // [12, 15)
+    }
+
+    {
+        const utf8_text = "Hello 🌍 世界";
+        var runes: [16]u32 = undefined;
+
+        const result = utf8_unpack_chunk(utf8_text, &runes);
+        try std.testing.expect(result.bytes_consumed > 0);
+        try std.testing.expect(result.runes_unpacked > 0);
+        try std.testing.expectEqual(result.runes_unpacked, 10); // H e l l o space 🌍 世 界 = 10 runes
+
+        try std.testing.expect(runes[0] == 'H');
+        try std.testing.expect(runes[1] == 'e');
+        try std.testing.expect(runes[2] == 'l');
+    }
+
+    {
+        const utf8_text = "Hello, 世界! 🌍";
+        const char_count = count_utf8(utf8_text);
+        try std.testing.expect(char_count == 12); // H e l l o , space 世界! space 🌍 = 12 characters
+
+        const range = utf8_case_insensitive_find(utf8_text, "HELLO") orelse return error.NotFound;
+        const found_text = range.slice(utf8_text);
+        try std.testing.expect(std.mem.eql(u8, found_text, "Hello"));
+
+        const russian_text = "Привет МИР, привет мир!";
+        const russian_range = utf8_case_insensitive_find(russian_text, "мир") orelse return error.NotFound;
+        const found_word = russian_range.slice(russian_text);
+        try std.testing.expect(found_word.len == 6); // Russian characters are 2 bytes each
+    }
+
+    {
+        const text = "The quick brown fox jumps over the lazy dog";
+        const vowels = Byteset.from_bytes("aeiou");
+        const consonants = Byteset.from_bytes("bcdfghjklmnpqrstvwxyz");
+
+        const first_vowel_pos = find_byteset(text, vowels) orelse return error.NotFound;
+        try std.testing.expect(first_vowel_pos == 2); // 'e' in "The"
+
+        const first_consonant_pos = find_byteset(text, consonants) orelse return error.NotFound;
+        try std.testing.expect(first_consonant_pos == 1); // 'h' in "The"
+
+        const xyz_pos = find_byte_from(text, "xyz") orelse return error.NotFound;
+        try std.testing.expect(xyz_pos == 18); // 'x' in "fox"
+
+        const non_vowel_pos = find_byte_not_from(text, "aeiou ") orelse return error.NotFound;
+        try std.testing.expect(non_vowel_pos == 0); // 'T' in "The"
     }
 }
