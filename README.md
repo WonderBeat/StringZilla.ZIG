@@ -21,10 +21,6 @@ StringZilla.ZIG provides idiomatic Zig bindings to the StringZilla C library
 - **Memory Operations**: `copy()`, `move()`, `fill()`, `lookup()`
 - **Bit Manipulation**: `Bitset` for efficient pattern matching
 
-## Requirements
-
-- Zig 0.15.0
-
 ## Installation
 
 Add StringZilla.ZIG to your project using Zig's package manager:
