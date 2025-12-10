@@ -7,7 +7,7 @@
 
 A high-performance Zig wrapper for [StringZilla](https://github.com/ashvardanian/StringZilla) - a SIMD-accelerated string processing library designed for massive datasets
 
-![StringZilla banner](https://github.com/ashvardanian/ashvardanian/blob/master/repositories/StringZilla-v4.jpg?raw=true)
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/5cee8781-92ca-44ea-a887-26ffe7245c49" />
 
 ## Overview
 
