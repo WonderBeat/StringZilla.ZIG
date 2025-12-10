@@ -132,7 +132,7 @@ stringzilla.copy(buffer[0..source.len], source);
 // Fill with pattern
 stringzilla.fill(buffer[0..50], 0xAA);
 
-// Move memory with overlap handling (new improved API)
+// Move memory with overlap handling
 stringzilla.moveMemory(buffer[10..60], buffer[0..50]);
 
 ```
@@ -143,7 +143,7 @@ stringzilla.moveMemory(buffer[10..60], buffer[0..50]);
 const utf8_text = "Hello 🌍 世界";
 var runes: [16]u32 = undefined;
 
-// Unpack UTF-8 to UTF-32 runes with enhanced API
+// Unpack UTF-8 to UTF-32 runes 
 const result = stringzilla.utf8_unpack_chunk(utf8_text, &runes);
 
 std.debug.print("Consumed {} bytes, unpacked {} runes\n", .{ 
@@ -223,26 +223,6 @@ if (stringzilla.find_newline_utf8(utf8_text)) |newline_slice| {
 if (stringzilla.find_whitespace_utf8(utf8_text)) |whitespace_slice| {
     std.debug.print("Whitespace found: '{any}'\n", .{whitespace_slice});
 }
-```
-
-## Recent API Improvements
-
-### 🔥 **Enhanced Ergonomics**
-
-**Range Struct**: Replace anonymous tuples with a proper `Range` struct:
-```zig
-// Before: Anonymous struct
-const result = utf8_case_insensitive_find(text, "world");
-const slice = text[result.?.offset .. result.?.offset + result.?.length];
-
-// After: Clean Range API  
-const result = utf8_case_insensitive_find(text, "world");
-const slice = result.?.slice(text);
-```
-
-**Utf8UnpackResult**: Structured UTF-8 unpacking results:
-```zig
-const result = utf8_unpack_chunk(text, &runes);
 ```
 
 ### Build the Example
