@@ -245,7 +245,6 @@ pub inline fn version() types.SemVer {
     };
 }
 
-/// Computes the checksum value of unsigned bytes in a given byte slice.
 /// Hardware-accelerated byte-level 64-bit unsigned checksum.
 ///
 /// This is a simple checksum function that sums all bytes in the input.
@@ -258,7 +257,6 @@ pub inline fn bytesum(text: []const u8) u64 {
     return clib.sz_bytesum(text.ptr, text.len);
 }
 
-/// Moves the contents of `source` into `target`.
 /// Similar to `memmove`, copies (moves) contents of one string into another.
 /// Unlike `copy`, allows overlapping strings as arguments.
 ///
@@ -270,7 +268,6 @@ pub inline fn moveMemory(target: []u8, source: []const u8) void {
     clib.sz_move(target.ptr, source.ptr, source.len);
 }
 
-/// Fills the contents of `target` with the specified `value`.
 /// Similar to `memset`, initializes memory with a constant value.
 /// Often used to initialize memory with a constant value, like zero.
 ///
@@ -280,7 +277,6 @@ pub inline fn fill(target: []u8, value: u8) void {
     clib.sz_fill(target.ptr, target.len, value);
 }
 
-/// Copies the contents of `source` into `target`.
 /// Similar to `memcpy`, copies contents of one string into another.
 /// This is probably the most common operation in a computer.
 ///
@@ -292,7 +288,6 @@ pub inline fn copy(target: []u8, source: []const u8) void {
     clib.sz_copy(target.ptr, source.ptr, source.len);
 }
 
-/// Performs a lookup transformation (LUT).
 /// Look-Up Table (LUT) transformation of a string, mapping each byte to a new value.
 /// Generalizes ASCII conversions like lowercase to uppercase.
 ///
@@ -315,7 +310,6 @@ pub inline fn utf8_case_fold(source: []const u8, destination: []u8) usize {
     return clib.sz_utf8_case_fold(source.ptr, source.len, destination.ptr);
 }
 
-/// Performs case-insensitive search for `needle` in UTF-8 `haystack`.
 /// Hardware-accelerated case-insensitive Unicode string search.
 /// Applies Unicode case folding to both haystack and needle for matching.
 /// Works with full Unicode text, including accented characters and non-Latin scripts.
@@ -348,7 +342,6 @@ pub fn utf8_case_insensitive_order(a: []const u8, b: []const u8) std.math.Order 
     }
 }
 
-/// Unpacks a UTF-8 byte sequence into UTF-32 codepoints.
 /// Hardware-accelerated UTF-8 to UTF-32 conversion using SIMD instructions.
 /// Processes UTF-8 text directly without decoding intermediate steps,
 /// checking for matches at different granularities (1, 2, 3, and 4 byte sequences).
@@ -366,7 +359,6 @@ pub fn utf8_unpack_chunk(text: []const u8, runes: []u32) Utf8UnpackResult {
     return Utf8UnpackResult{ .bytes_consumed = bytes_consumed, .runes_unpacked = runes_unpacked };
 }
 
-/// Computes a 64-bit AES-based hash value with seed.
 /// Hardware-accelerated non-cryptographic 64-bit hash using AES instructions.
 /// Combines AES operations with shuffle & add instructions for high entropy.
 /// Fast for both short strings (velocity) and long strings (throughput).
@@ -378,7 +370,6 @@ pub inline fn hash_with_seed(text: []const u8, seed: u64) u64 {
     return clib.sz_hash(text.ptr, text.len, seed);
 }
 
-/// Computes a 64-bit AES-based hash value.
 /// Hardware-accelerated non-cryptographic 64-bit hash using AES instructions.
 /// Uses zero as the default seed value.
 ///
@@ -1632,7 +1623,7 @@ test "Run README examples" {
         const result = utf8_unpack_chunk(utf8_text, &runes);
         try std.testing.expect(result.bytes_consumed > 0);
         try std.testing.expect(result.runes_unpacked > 0);
-        try std.testing.expectEqual(result.runes_unpacked, 10); // H e l l o space 🌍 世 界 = 10 runes
+        try std.testing.expectEqual(10, result.runes_unpacked); // H e l l o space 🌍 世 界 = 10 runes
 
         try std.testing.expect(runes[0] == 'H');
         try std.testing.expect(runes[1] == 'e');
