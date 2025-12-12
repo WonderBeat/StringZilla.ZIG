@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/WonderBeat/StringZilla.ZIG.svg)](https://github.com/WonderBeat/StringZilla.ZIG/blob/main/LICENSE)
 [![Zig Version](https://img.shields.io/badge/zig-0.15.2+-yellow.svg)](https://ziglang.org/download/)
 
-A high-performance Zig wrapper for [StringZilla](https://github.com/ashvardanian/StringZilla) - a SIMD-accelerated string processing library designed for massive datasets
+Zig wrapper for [StringZilla](https://github.com/ashvardanian/StringZilla) - a SIMD-accelerated string processing library designed for massive datasets
 
 <img width="800" alt="image" src="https://github.com/user-attachments/assets/5cee8781-92ca-44ea-a887-26ffe7245c49" />
 
